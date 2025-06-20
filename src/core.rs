@@ -55,33 +55,180 @@ impl CoreInfo {
 pub struct CoreCapabilities {
     /// 是否支持自动调优
     pub supports_auto_tuning: bool,
-    /// 是否支持温度监控
-    pub supports_temperature_monitoring: bool,
-    /// 是否支持电压控制
-    pub supports_voltage_control: bool,
-    /// 是否支持频率控制
-    pub supports_frequency_control: bool,
-    /// 是否支持风扇控制
-    pub supports_fan_control: bool,
+    /// 温度相关能力
+    pub temperature_capabilities: TemperatureCapabilities,
+    /// 电压相关能力
+    pub voltage_capabilities: VoltageCapabilities,
+    /// 频率相关能力
+    pub frequency_capabilities: FrequencyCapabilities,
+    /// 风扇相关能力
+    pub fan_capabilities: FanCapabilities,
     /// 是否支持多链
     pub supports_multiple_chains: bool,
     /// 最大设备数量
     pub max_devices: Option<u32>,
     /// 支持的算法
     pub supported_algorithms: Vec<String>,
+    /// CPU特有能力（仅CPU核心使用）
+    pub cpu_capabilities: Option<CpuSpecificCapabilities>,
+    /// 核心类型
+    pub core_type: CoreType,
+}
+
+/// 温度相关能力
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemperatureCapabilities {
+    /// 是否支持温度监控
+    pub supports_monitoring: bool,
+    /// 是否支持温度控制（如风扇调节）
+    pub supports_control: bool,
+    /// 是否支持温度阈值告警
+    pub supports_threshold_alerts: bool,
+    /// 温度监控精度（摄氏度）
+    pub monitoring_precision: Option<f32>,
+}
+
+/// 电压相关能力
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoltageCapabilities {
+    /// 是否支持电压监控
+    pub supports_monitoring: bool,
+    /// 是否支持电压控制
+    pub supports_control: bool,
+    /// 电压控制范围（毫伏）
+    pub control_range: Option<(u32, u32)>,
+}
+
+/// 频率相关能力
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrequencyCapabilities {
+    /// 是否支持频率监控
+    pub supports_monitoring: bool,
+    /// 是否支持频率控制
+    pub supports_control: bool,
+    /// 频率控制范围（MHz）
+    pub control_range: Option<(u32, u32)>,
+}
+
+/// 风扇相关能力
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FanCapabilities {
+    /// 是否支持风扇监控
+    pub supports_monitoring: bool,
+    /// 是否支持风扇控制
+    pub supports_control: bool,
+    /// 风扇数量
+    pub fan_count: Option<u32>,
+}
+
+/// CPU特有能力
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuSpecificCapabilities {
+    /// 支持的SIMD指令集
+    pub simd_support: Vec<String>,
+    /// 是否支持CPU绑定
+    pub supports_cpu_affinity: bool,
+    /// 是否支持NUMA感知
+    pub supports_numa_awareness: bool,
+    /// 物理核心数
+    pub physical_cores: u32,
+    /// 逻辑核心数
+    pub logical_cores: u32,
+    /// 缓存信息
+    pub cache_info: Option<CpuCacheInfo>,
+}
+
+/// CPU缓存信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuCacheInfo {
+    /// L1数据缓存大小（KB）
+    pub l1_data_kb: u32,
+    /// L1指令缓存大小（KB）
+    pub l1_instruction_kb: u32,
+    /// L2缓存大小（KB）
+    pub l2_kb: u32,
+    /// L3缓存大小（KB）
+    pub l3_kb: u32,
 }
 
 impl Default for CoreCapabilities {
     fn default() -> Self {
         Self {
             supports_auto_tuning: false,
-            supports_temperature_monitoring: false,
-            supports_voltage_control: false,
-            supports_frequency_control: false,
-            supports_fan_control: false,
+            temperature_capabilities: TemperatureCapabilities::default(),
+            voltage_capabilities: VoltageCapabilities::default(),
+            frequency_capabilities: FrequencyCapabilities::default(),
+            fan_capabilities: FanCapabilities::default(),
             supports_multiple_chains: false,
             max_devices: None,
             supported_algorithms: vec!["SHA256".to_string()],
+            cpu_capabilities: None,
+            core_type: CoreType::Custom("unknown".to_string()),
+        }
+    }
+}
+
+impl Default for TemperatureCapabilities {
+    fn default() -> Self {
+        Self {
+            supports_monitoring: false,
+            supports_control: false,
+            supports_threshold_alerts: false,
+            monitoring_precision: None,
+        }
+    }
+}
+
+impl Default for VoltageCapabilities {
+    fn default() -> Self {
+        Self {
+            supports_monitoring: false,
+            supports_control: false,
+            control_range: None,
+        }
+    }
+}
+
+impl Default for FrequencyCapabilities {
+    fn default() -> Self {
+        Self {
+            supports_monitoring: false,
+            supports_control: false,
+            control_range: None,
+        }
+    }
+}
+
+impl Default for FanCapabilities {
+    fn default() -> Self {
+        Self {
+            supports_monitoring: false,
+            supports_control: false,
+            fan_count: None,
+        }
+    }
+}
+
+impl Default for CpuSpecificCapabilities {
+    fn default() -> Self {
+        Self {
+            simd_support: vec![],
+            supports_cpu_affinity: false,
+            supports_numa_awareness: false,
+            physical_cores: 1,
+            logical_cores: 1,
+            cache_info: None,
+        }
+    }
+}
+
+impl Default for CpuCacheInfo {
+    fn default() -> Self {
+        Self {
+            l1_data_kb: 32,
+            l1_instruction_kb: 32,
+            l2_kb: 256,
+            l3_kb: 8192,
         }
     }
 }

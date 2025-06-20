@@ -11,7 +11,11 @@ pub mod types;
 pub mod work;
 
 // 重新导出常用类型
-pub use core::{MiningCore, CoreInfo, CoreCapabilities, CoreConfig, CoreStats};
+pub use core::{
+    MiningCore, CoreInfo, CoreCapabilities, CoreConfig, CoreStats,
+    TemperatureCapabilities, VoltageCapabilities, FrequencyCapabilities,
+    FanCapabilities, CpuSpecificCapabilities, CpuCacheInfo
+};
 pub use device::{DeviceInfo, DeviceStatus, DeviceStats, DeviceConfig, MiningDevice};
 pub use error::{CoreError, DeviceError};
 pub use registry::{CoreRegistry, CoreFactory};
