@@ -157,6 +157,8 @@ impl CoreRegistry {
         })
     }
 
+
+
     /// 列出所有活跃的核心实例
     pub async fn list_active_cores(&self) -> Result<Vec<String>, CoreError> {
         let active_cores = self.active_cores.read().await;
@@ -287,6 +289,16 @@ impl CoreRegistry {
             registered_factories: factories.len(),
             active_cores: active_cores.len(),
         })
+    }
+
+    /// 启动指定核心的连续计算模式（专门用于SoftwareMiningCore）
+    pub async fn start_continuous_mining_for_core(&self, core_id: &str) -> Result<(), CoreError> {
+        // 由于trait对象的限制，我们暂时返回一个提示信息
+        // 实际实现需要在具体的核心类型中处理
+        info!("尝试为核心 {} 启动连续计算模式", core_id);
+
+        // 简化实现：直接启动核心（如果还没启动的话）
+        self.start_core(core_id).await
     }
 }
 

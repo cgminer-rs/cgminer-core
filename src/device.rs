@@ -440,4 +440,7 @@ pub trait MiningDevice: Send + Sync {
 
     /// 获取设备健康状态
     async fn health_check(&self) -> Result<bool, DeviceError>;
+
+    /// 运行时类型转换支持
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
