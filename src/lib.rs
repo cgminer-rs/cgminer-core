@@ -9,6 +9,7 @@ pub mod error;
 pub mod registry;
 pub mod types;
 pub mod work;
+pub mod utils;
 
 // 重新导出常用类型
 pub use core::{
@@ -21,6 +22,7 @@ pub use error::{CoreError, DeviceError};
 pub use registry::{CoreRegistry, CoreFactory};
 pub use types::{Work, MiningResult, HashRate, Temperature, Voltage, Frequency};
 pub use work::{WorkManager, WorkQueue};
+pub use utils::{meets_target, validate_work_integrity, calculate_difficulty};
 
 /// 库版本
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
