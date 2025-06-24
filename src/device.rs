@@ -5,7 +5,7 @@ use crate::types::{Work, MiningResult, HashRate, Temperature, Voltage, Frequency
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, Instant};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{debug, trace};
 
 /// 设备信息
