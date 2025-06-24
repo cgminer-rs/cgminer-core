@@ -17,7 +17,7 @@ pub use core::{
     TemperatureCapabilities, VoltageCapabilities, FrequencyCapabilities,
     FanCapabilities, CpuSpecificCapabilities, CpuCacheInfo
 };
-pub use device::{DeviceInfo, DeviceStatus, DeviceStats, DeviceConfig, MiningDevice};
+pub use device::{DeviceInfo, DeviceStatus, DeviceStats, DeviceConfig, MiningDevice, CgminerHashrateTracker};
 pub use error::{CoreError, DeviceError};
 pub use registry::{CoreRegistry, CoreFactory};
 pub use types::{Work, MiningResult, HashRate, Temperature, Voltage, Frequency};

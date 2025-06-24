@@ -5,6 +5,7 @@ use crate::types::{Work, MiningResult, HashRate, Temperature, Voltage, Frequency
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, Instant};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tracing::{debug, trace};
 
 /// 设备信息
@@ -443,4 +444,197 @@ pub trait MiningDevice: Send + Sync {
 
     /// 运行时类型转换支持
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
+
+/// CGMiner风格的算力追踪器
+/// 提供5秒、1分钟、5分钟、15分钟的滑动窗口算力统计
+/// 使用指数衰减平均算法，与原始cgminer保持一致
+#[derive(Debug)]
+pub struct CgminerHashrateTracker {
+    total_hashes: AtomicU64,
+    start_time: std::time::Instant,
+    last_update_time: AtomicU64, // 纳秒时间戳
+
+    // 指数衰减平均算力 (哈希/秒)
+    avg_5s: AtomicU64,   // f64 as u64 bits
+    avg_1m: AtomicU64,
+    avg_5m: AtomicU64,
+    avg_15m: AtomicU64,
+
+    // 统计数据
+    accepted_shares: AtomicU64,
+    rejected_shares: AtomicU64,
+    hardware_errors: AtomicU64,
+}
+
+impl CgminerHashrateTracker {
+    /// 创建新的算力追踪器
+    pub fn new() -> Self {
+        let now = std::time::Instant::now();
+        Self {
+            total_hashes: AtomicU64::new(0),
+            start_time: now,
+            last_update_time: AtomicU64::new(now.elapsed().as_nanos() as u64),
+            avg_5s: AtomicU64::new(0),
+            avg_1m: AtomicU64::new(0),
+            avg_5m: AtomicU64::new(0),
+            avg_15m: AtomicU64::new(0),
+            accepted_shares: AtomicU64::new(0),
+            rejected_shares: AtomicU64::new(0),
+            hardware_errors: AtomicU64::new(0),
+        }
+    }
+
+    /// 添加哈希数 - 挖矿线程调用，最小开销
+    pub fn add_hashes(&self, hashes: u64) {
+        self.total_hashes.fetch_add(hashes, Ordering::Relaxed);
+    }
+
+    /// 更新指数衰减平均算力 - 统计线程调用
+    pub fn update_averages(&self) {
+        let now_nanos = self.start_time.elapsed().as_nanos() as u64;
+        let last_update = self.last_update_time.load(Ordering::Relaxed);
+
+        if now_nanos <= last_update {
+            return; // 避免时间倒流
+        }
+
+        let elapsed_secs = (now_nanos - last_update) as f64 / 1_000_000_000.0;
+        if elapsed_secs < 0.1 {
+            return; // 更新太频繁，跳过
+        }
+
+        let total_hashes = self.total_hashes.load(Ordering::Relaxed);
+        let total_elapsed = self.start_time.elapsed().as_secs_f64();
+
+        if total_elapsed <= 0.0 {
+            return;
+        }
+
+        // 当前瞬时算力
+        let current_hashrate = total_hashes as f64 / total_elapsed;
+
+        // 指数衰减因子 (基于cgminer的实现)
+        let alpha_5s = 1.0 - (-elapsed_secs / 5.0).exp();
+        let alpha_1m = 1.0 - (-elapsed_secs / 60.0).exp();
+        let alpha_5m = 1.0 - (-elapsed_secs / 300.0).exp();
+        let alpha_15m = 1.0 - (-elapsed_secs / 900.0).exp();
+
+        // 更新指数衰减平均值
+        self.update_ema(&self.avg_5s, current_hashrate, alpha_5s);
+        self.update_ema(&self.avg_1m, current_hashrate, alpha_1m);
+        self.update_ema(&self.avg_5m, current_hashrate, alpha_5m);
+        self.update_ema(&self.avg_15m, current_hashrate, alpha_15m);
+
+        // 更新时间戳
+        self.last_update_time.store(now_nanos, Ordering::Relaxed);
+    }
+
+    fn update_ema(&self, atomic_avg: &AtomicU64, current_value: f64, alpha: f64) {
+        let old_bits = atomic_avg.load(Ordering::Relaxed);
+        let old_value = if old_bits == 0 {
+            current_value // 初始值
+        } else {
+            f64::from_bits(old_bits)
+        };
+
+        let new_value = old_value + alpha * (current_value - old_value);
+        atomic_avg.store(new_value.to_bits(), Ordering::Relaxed);
+    }
+
+    /// 获取CGMiner风格的算力字符串
+    /// 格式: (5s):X.XM (1m):X.XM (5m):X.XM (15m):X.XM (avg):X.XMh/s A:X R:X HW:X
+    pub fn get_cgminer_hashrate_string(&self) -> String {
+        let (avg_5s, avg_1m, avg_5m, avg_15m, avg_total) = self.get_hashrates();
+        let (accepted, rejected, hw_errors) = self.get_stats();
+
+        format!(
+            "(5s):{:.2}M (1m):{:.2}M (5m):{:.2}M (15m):{:.2}M (avg):{:.2}Mh/s A:{} R:{} HW:{}",
+            avg_5s / 1_000_000.0,
+            avg_1m / 1_000_000.0,
+            avg_5m / 1_000_000.0,
+            avg_15m / 1_000_000.0,
+            avg_total / 1_000_000.0,
+            accepted,
+            rejected,
+            hw_errors
+        )
+    }
+
+    /// 获取各个时间段的算力
+    /// 返回: (5s, 1m, 5m, 15m, avg_total) - 单位: H/s
+    pub fn get_hashrates(&self) -> (f64, f64, f64, f64, f64) {
+        let avg_5s = f64::from_bits(self.avg_5s.load(Ordering::Relaxed));
+        let avg_1m = f64::from_bits(self.avg_1m.load(Ordering::Relaxed));
+        let avg_5m = f64::from_bits(self.avg_5m.load(Ordering::Relaxed));
+        let avg_15m = f64::from_bits(self.avg_15m.load(Ordering::Relaxed));
+
+        let total_hashes = self.total_hashes.load(Ordering::Relaxed);
+        let total_elapsed = self.start_time.elapsed().as_secs_f64();
+        let avg_total = if total_elapsed > 0.0 {
+            total_hashes as f64 / total_elapsed
+        } else {
+            0.0
+        };
+
+        (avg_5s, avg_1m, avg_5m, avg_15m, avg_total)
+    }
+
+    /// 获取统计数据 (accepted, rejected, hardware_errors)
+    pub fn get_stats(&self) -> (u64, u64, u64) {
+        (
+            self.accepted_shares.load(Ordering::Relaxed),
+            self.rejected_shares.load(Ordering::Relaxed),
+            self.hardware_errors.load(Ordering::Relaxed)
+        )
+    }
+
+    /// 记录接受的份额
+    pub fn increment_accepted(&self) {
+        self.accepted_shares.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 记录拒绝的份额
+    pub fn increment_rejected(&self) {
+        self.rejected_shares.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 记录硬件错误
+    pub fn increment_hardware_error(&self) {
+        self.hardware_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 获取总哈希数
+    pub fn get_total_hashes(&self) -> u64 {
+        self.total_hashes.load(Ordering::Relaxed)
+    }
+
+    /// 获取运行时间
+    pub fn get_uptime(&self) -> std::time::Duration {
+        self.start_time.elapsed()
+    }
+
+    /// 重置统计信息
+    pub fn reset(&self) {
+        self.total_hashes.store(0, Ordering::Relaxed);
+        self.accepted_shares.store(0, Ordering::Relaxed);
+        self.rejected_shares.store(0, Ordering::Relaxed);
+        self.hardware_errors.store(0, Ordering::Relaxed);
+
+        // 重置算力平均值
+        self.avg_5s.store(0, Ordering::Relaxed);
+        self.avg_1m.store(0, Ordering::Relaxed);
+        self.avg_5m.store(0, Ordering::Relaxed);
+        self.avg_15m.store(0, Ordering::Relaxed);
+
+        // 重置时间
+        let now_nanos = self.start_time.elapsed().as_nanos() as u64;
+        self.last_update_time.store(now_nanos, Ordering::Relaxed);
+    }
+}
+
+impl Default for CgminerHashrateTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
