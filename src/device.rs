@@ -414,8 +414,8 @@ pub trait MiningDevice: Send + Sync {
     /// 重启设备
     async fn restart(&mut self) -> Result<(), DeviceError>;
 
-    /// 提交工作
-    async fn submit_work(&mut self, work: Work) -> Result<(), DeviceError>;
+    /// 提交工作 - 使用Arc<Work>实现零拷贝
+    async fn submit_work(&mut self, work: std::sync::Arc<Work>) -> Result<(), DeviceError>;
 
     /// 获取挖矿结果
     async fn get_result(&mut self) -> Result<Option<MiningResult>, DeviceError>;

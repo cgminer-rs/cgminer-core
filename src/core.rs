@@ -282,6 +282,12 @@ pub struct CoreStats {
     pub last_updated: SystemTime,
 }
 
+impl Default for CoreStats {
+    fn default() -> Self {
+        Self::new("unknown".to_string())
+    }
+}
+
 impl CoreStats {
     /// 创建新的核心统计信息
     pub fn new(core_name: String) -> Self {
@@ -343,8 +349,8 @@ pub trait MiningCore: Send + Sync {
     /// 获取设备数量
     async fn device_count(&self) -> Result<u32, CoreError>;
 
-    /// 提交工作到所有设备
-    async fn submit_work(&mut self, work: Work) -> Result<(), CoreError>;
+    /// 提交工作到所有设备 - 使用Arc<Work>实现零拷贝
+    async fn submit_work(&mut self, work: std::sync::Arc<Work>) -> Result<(), CoreError>;
 
     /// 收集所有设备的挖矿结果
     async fn collect_results(&mut self) -> Result<Vec<MiningResult>, CoreError>;

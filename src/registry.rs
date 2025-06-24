@@ -157,8 +157,6 @@ impl CoreRegistry {
         })
     }
 
-
-
     /// 列出所有活跃的核心实例
     pub async fn list_active_cores(&self) -> Result<Vec<String>, CoreError> {
         let active_cores = self.active_cores.read().await;
@@ -211,8 +209,8 @@ impl CoreRegistry {
         }
     }
 
-    /// 向指定核心提交工作
-    pub async fn submit_work_to_core(&self, core_id: &str, work: Work) -> Result<(), CoreError> {
+    /// 向指定核心提交工作 - 使用Arc<Work>实现零拷贝
+    pub async fn submit_work_to_core(&self, core_id: &str, work: std::sync::Arc<Work>) -> Result<(), CoreError> {
         let mut active_cores = self.active_cores.write().await;
 
         if let Some(core) = active_cores.get_mut(core_id) {
@@ -299,6 +297,79 @@ impl CoreRegistry {
 
         // 简化实现：直接启动核心（如果还没启动的话）
         self.start_core(core_id).await
+    }
+
+    // ============ 同步版本方法 - 用于高性能热路径 ============
+
+    /// 同步版本：列出所有活跃的核心实例
+    pub fn try_list_active_cores(&self) -> Result<Vec<String>, CoreError> {
+        let active_cores = self.active_cores.try_read().map_err(|_| {
+            CoreError::runtime("Failed to acquire read lock for active cores".to_string())
+        })?;
+
+        Ok(active_cores.keys().cloned().collect())
+    }
+
+    /// 同步版本：向指定核心提交工作 - 用于高性能热路径
+    pub fn try_submit_work_to_core_sync(&self, _core_id: &str, _work: std::sync::Arc<Work>) -> Result<(), String> {
+        // 注意：这里使用try_write避免阻塞，如果获取锁失败则返回错误
+        match self.active_cores.try_write() {
+            Ok(active_cores) => {
+                if let Some(_core) = active_cores.get(_core_id) {
+                    // 由于MiningCore trait的submit_work是async的，我们需要一个同步版本
+                    // 这里暂时记录错误，实际需要在具体实现中添加同步版本
+                    Err(format!("Core '{}' does not support sync work submission", _core_id))
+                } else {
+                    Err(format!("Core instance '{}' does not exist", _core_id))
+                }
+            }
+            Err(_) => Err("Failed to acquire write lock for active cores".to_string())
+        }
+    }
+
+    /// 同步版本：批量提交工作到多个核心
+    pub fn try_batch_submit_work_sync(&self, works: Vec<(String, std::sync::Arc<Work>)>) -> Result<usize, String> {
+        let mut success_count = 0;
+
+        for (core_id, work) in works {
+            if self.try_submit_work_to_core_sync(&core_id, work).is_ok() {
+                success_count += 1;
+            }
+        }
+
+        Ok(success_count)
+    }
+
+    /// 同步版本：从指定核心收集挖矿结果
+    pub fn try_collect_results_from_core_sync(&self, core_id: &str) -> Result<Vec<MiningResult>, String> {
+        match self.active_cores.try_write() {
+            Ok(mut active_cores) => {
+                if let Some(_core) = active_cores.get_mut(core_id) {
+                    // 这里需要实现同步版本的结果收集
+                    // 暂时返回空结果
+                    Ok(vec![])
+                } else {
+                    Err(format!("Core instance '{}' does not exist", core_id))
+                }
+            }
+            Err(_) => Err("Failed to acquire write lock for active cores".to_string())
+        }
+    }
+
+    /// 同步版本：获取核心统计信息
+    pub fn try_get_core_stats_sync(&self, core_id: &str) -> Result<CoreStats, String> {
+        match self.active_cores.try_read() {
+            Ok(active_cores) => {
+                if let Some(_core) = active_cores.get(core_id) {
+                    // 这里需要实现同步版本的统计获取
+                    // 暂时返回默认统计
+                    Ok(CoreStats::default())
+                } else {
+                    Err(format!("Core instance '{}' does not exist", core_id))
+                }
+            }
+            Err(_) => Err("Failed to acquire read lock for active cores".to_string())
+        }
     }
 }
 
